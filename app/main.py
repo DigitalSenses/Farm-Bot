@@ -2,6 +2,7 @@ import telepot
 import time
 from database import controls
 from database.db import db_session
+import random
 
 UserID = ''
 
@@ -20,24 +21,32 @@ def handle(msg):
     if message['Text'].lower() == '/start':
         print('/start')
         bot_cmd_start(message)
+
     if message['Text'].startswith('/user'):
         print('/user')
         arguments = message['Text'].replace('/user ', '')
         arguments = arguments.split(' ')
-
-        print(arguments)
         bot_cmd_user(arguments)
+
     if message['Text'].startswith('/change'):
         print('/change')
         arguments = message['Text'].replace('/change ', '')
         arguments = arguments.split(' ')
+        bot_cmd_change(arguments)
+
     if message['Text'].startswith('/help'):
         print('/help')
-        bot_send_message('You must use commands to interact with this bot. Use /list_commands to get a full list.')
+        bot_cmd_help()
 
     if message['Text'].startswith('/list_commands'):
         print('/list_commands')
-        bot_send_message('Command List \n\n/start\n\n/user add {Username} {Name} {Permission} {Role}\n\n/user remove {Username}\n\n/change name {Username} {Name}\n\n/change species {Name} {Species}\n\n/change bodytype {Name} {BodyType}\n\n/change height {Name} -{HeightToSubtract}\n/change height {Name} +{HeightToAdd}\n/change height {Name} {Height}\n\n/change weight {Name} -{WeightToSubtract}\n/change weight {Name} +{WeightToAdd}\n/change weight {Name} {Weight}\n\n/change cocktype {Name} cocktype\n\n/change numberofcocks {Name} -{CocksToSubtract}\n/change numberofcocks {Name} +{CocksToAdd}\n/change numberofcocks {Name} {Cocks}\n\n/change cocksizelength {Name} -{CockLengthToSubtract}\n/change cocksizelength {Name} +{CockLengthToAdd}\n/change cocksizelength {Name} {CockLength}\n\n/change cocksizethickness {Name} -{CockThicknessToSubtract}\n/change cocksizethickness {Name} +{CockThicknessToAdd}\n/change cocksizethickness {Name} {CockThickness}\n\n/change numberofballs {Name} -{NumberOfBallsToSubtract}\n/change numberofballs {Name} +{NumberOfBallsToAdd}\n/change numberofballs {Name} {NumberOfBalls}\n\n/change ballsize {Name} -{BallSizeToSubtract}\n/change ballsize {Name} +{BallSizeToAdd}\n/change ballsize {Name} {BallSize}\n\n/change {Name} position\n\n/change {Name} role')
+        bot_cmd_list_commands()
+
+    if message['Text'].startswith('/roll'):
+        print('/roll')
+        arguments = message['Text'].replace('/roll ', '')
+        arguments = arguments.split(' ')
+        bot_cmd_roll(arguments)
 
     UserID = ''
 
@@ -62,7 +71,7 @@ def bot_send_message(message):
 def bot_cmd_start(message):
     print('Confirm Start')
 
-    bot.sendMessage(message['UserID'], 'Welcome %s. If you need help, use the command /help' % message['FirstName'])
+    bot.sendMessage(message['UserID'], 'Welcome to the farm %s. If you need help, use the command /help' % message['FirstName'])
 
 def bot_cmd_user(args):
     print('Confirm User')
@@ -154,6 +163,28 @@ def bot_cmd_change(args):
         controls.ChangeRole(args[1], args[2])
 
     db_session.close()
+
+def bot_cmd_roll(args):
+    min_value = args[0]
+    max_value = args[1]
+
+    if min_value > max_value:
+        a = min_value
+        b = max_value
+
+        min_value = b
+        max_value = a
+
+    r = random.randint(int(min_value), int(max_value))
+
+    r = str(r)
+    bot_send_message(r)
+
+def bot_cmd_list_commands():
+    bot_send_message('Command List \n\n/start\n\n/user add {Username} {Name} {Permission} {Role}\n\n/user remove {Username}\n\n/change name {Username} {Name}\n\n/change species {Name} {Species}\n\n/change bodytype {Name} {BodyType}\n\n/change height {Name} -{HeightToSubtract}\n/change height {Name} +{HeightToAdd}\n/change height {Name} {Height}\n\n/change weight {Name} -{WeightToSubtract}\n/change weight {Name} +{WeightToAdd}\n/change weight {Name} {Weight}\n\n/change cocktype {Name} cocktype\n\n/change numberofcocks {Name} -{CocksToSubtract}\n/change numberofcocks {Name} +{CocksToAdd}\n/change numberofcocks {Name} {Cocks}\n\n/change cocksizelength {Name} -{CockLengthToSubtract}\n/change cocksizelength {Name} +{CockLengthToAdd}\n/change cocksizelength {Name} {CockLength}\n\n/change cocksizethickness {Name} -{CockThicknessToSubtract}\n/change cocksizethickness {Name} +{CockThicknessToAdd}\n/change cocksizethickness {Name} {CockThickness}\n\n/change numberofballs {Name} -{NumberOfBallsToSubtract}\n/change numberofballs {Name} +{NumberOfBallsToAdd}\n/change numberofballs {Name} {NumberOfBalls}\n\n/change ballsize {Name} -{BallSizeToSubtract}\n/change ballsize {Name} +{BallSizeToAdd}\n/change ballsize {Name} {BallSize}\n\n/change position {Name} {position}\n\n/change role {Name} {role}')
+
+def bot_cmd_help():
+    bot_send_message('You must use commands to interact with this bot. Use /list_commands to get a full list.')
 
 # Create a bot object with API key
 bot = telepot.Bot('379955406:AAHhnAdnFJnLk0v5hVGLYMl6t9Rg9cj1PIw')
