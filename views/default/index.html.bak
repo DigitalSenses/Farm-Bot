@@ -1,0 +1,4 @@
+{{extend 'layout.html'}}
+
+<p>This is a test app</p>
+<p>{{=text}}</p>

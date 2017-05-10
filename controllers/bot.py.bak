@@ -1,0 +1,3 @@
+# -*- coding: utf-8 -*-
+# try something like
+def test_bot(): return "hello from bot.py
