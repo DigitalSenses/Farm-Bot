@@ -1,0 +1,564 @@
+import gluon.contrib.simplejson as json
+import datetime
+import random
+from gluon.tools import fetch
+from gluon.storage import Storage
+telegramAPI_key = "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/"
+
+# -*- coding: utf-8 -*-
+### required - do no delete
+def user(): return dict(form=auth())
+def download(): return response.download(request,db)
+def call(): return service()
+### end requires
+def index():
+    return "Hello World"
+
+
+
+def debug_print(text):
+    db.PostReqs.insert(post_data = "DEBUG:" + text, time_stamp = datetime.datetime.today())
+    return
+
+def post():
+    if request.post_vars:
+        post_data = str(request.body.read())
+        db.PostReqs.insert(post_data = post_data, time_stamp = request.now)
+        response.headers['Content-Type'] = "application/json"
+        return telegram_parse(post_data)
+    else:
+        return "This is not a HTTP POST request!"
+
+def help():
+    return dict()
+    
+def postlog():
+    tmp = "Post Reqest log:<br>"
+    rows = db().select(db.PostReqs.ALL)
+    for row in rows:
+        tmp = tmp + "[" + str(row.id) + "] " + row.time_stamp.strftime("%Y-%m-%d %H:%M:%S") + ": " + row.post_data + "<br>"
+    return tmp
+
+def list_users():
+    tmp = "<H1>List of users:</H1>"
+    rows = db().select(db.BotUsers.ALL)
+    for row in rows:
+        tmp = tmp + '<B><font size="5">' + row.fullname + '</font>          <font size="3" color=#B0B0B0>@' + row.username + '</B></font><br>'
+        tmp = tmp + '<B>Permissions:</B><br>' + permList(row.permissions) + '<br> <br>'
+        tmp = tmp + '<B>About:</B><br>' + list_dict_html(json_decode(row.about)) + '<br>'
+        tmp = tmp + '<B>Stats:</B><br>' + dict_stat_list(json_decode(row.stats)).replace("\n","<br>") + '<br><br><br>'
+    return tmp
+
+def register_telegram():
+    url_addr = telegramAPI_key + "setWebhook"
+    url_addr = url_addr + "?url=" + URL('post', host=True)
+    return "URL set to:" + url_addr + "<br><br> Response: <br>" + fetch(url_addr)
+
+def test():
+    return test_bot()
+    return telegram_post(234250297,'This is a "test message". It contains weird characters like = & ? š č ž and stuff like that')
+    json_data = json.loads("{\"test1\":10,\"test2\":20}")
+    s = json.dumps(json_data, sort_keys=True, indent=4)
+    return '\n'.join([l.rstrip() for l in  s.splitlines()])
+
+def telegram_post(chat_id, message):
+    from gluon.tools import fetch
+    from urllib import quote_plus
+    url_addr = telegramAPI_key + "sendMessage"
+    url_addr = url_addr + "?chat_id=" + str(chat_id)
+    url_addr = url_addr + "&text=" + quote_plus(message)
+    return fetch(url_addr)
+
+def telegram_parse(PostData):
+    import sys
+    Reply = None
+    try:
+        json_data = json.loads(PostData)
+        #Check that it contains an update_id
+        if json_data["update_id"] > 0 :
+            #Fill a storage object with all the useful info
+            s = Storage()
+            s.ChatId = int(json_data["message"]["chat"]["id"])
+            s.Message = json_data["message"]["text"]
+            s.UserName = json_data["message"]["from"]["username"]
+            try:
+                s.UserNameFirst = json_data["message"]["from"]["first_name"]
+            except:
+                s.UserNameFirst = s.UserName
+                
+            try:
+                s.UserNameLast = json_data["message"]["from"]["last_name"]
+            except:
+                s.UserNameLast = ""
+            s.UserId = int(json_data["message"]["from"]["id"])
+            if json_data["message"]["chat"]["type"] == "group":
+                s.ChatName = json_data["message"]["chat"]["title"]
+            else:
+                s.ChatName = None
+                
+            #Hand the message to the bot for processing
+            try:
+                Reply = telegram_gotmessage(s)
+            except Exception, e:
+                debug_print("CMD-ERROR: " + str(e))
+                return None
+            
+            #If the bot has returned a reply then we build a json response and return it to telergam servers
+            if Reply <> None:
+                Reply = "`" + str(Reply) + "`"
+                Reply = '{"method":"sendMessage","parse_mode":"Markdown","chat_id":' + str(s.ChatId) + ',"text":"' + str(Reply).replace('"','\\\"') + '"}'
+                return Reply
+            else:
+                return None
+    except Exception, e:
+        debug_print("JSON-ERROR: " + str(e))
+    return None
+
+def telegram_gotmessage(Msg):
+    debug_print("TELEGRAM from " + Msg.UserName + ":" + Msg.Message)
+    return bot_getpost(Msg)
+
+def json_decode(json_text):
+    try:
+        json_data = json.loads(json_text)
+        return json_data
+    except:
+        return {}
+    
+def json_encode(json_data):
+    try:
+        json_text = json.dumps(json_data)
+        return json_text
+    except:
+        return "{}"
+
+def list_dict_html(src_dict):
+    tmp = ""
+    if src_dict == {}:
+        return "Empty"
+    for item, value in src_dict.items():
+        tmp = tmp + str(item) + ": " + str(value) + "<br>"
+    return tmp
+
+def list_dict(src_dict):
+    tmp = ""
+    if src_dict == {}:
+        return "Empty"
+    for item, value in src_dict.items():
+        tmp = tmp + str(item) + ": " + str(value) + "\n"
+    return tmp
+
+
+##################################################################################
+#                           Bot behaviur
+##################################################################################
+
+def bot_getpost(Msg):
+
+    #Lookup the user in the database and read out his permissions
+    Set = db(db.BotUsers.username.lower() == Msg.UserName.lower())
+    if Set.count() > 0:
+        try:
+            user_id = Set.select().first().id
+            Msg.Permissions = json_decode(db.BotUsers[user_id].permissions)['perms']
+            Msg.Registered = True
+            Msg.UserDbId = user_id
+        except Exception, e:
+            Msg.Registered = True
+            Msg.Permissions = []
+    else:
+        Msg.Registered = False
+        Msg.Permissions = []
+
+    Message = str(Msg.Message)
+
+    #Check if user is blocked
+    if (Msg.Permissions.count("Block") > 0) and (Msg.Permissions.count("God") == 0):
+        return None
+    
+    #Commands for everyone
+    if (Message.lower().startswith("/register ")) or (Message.lower() == "/register"):
+        return bot_register_user(Msg)
+
+    if (Message.lower().startswith("/help ")) or (Message.lower() == "/help"):
+        return "You can read all about it here " + URL("help",scheme=True, host=True)
+
+    if (Message.lower().startswith("/roll ")) or (Message.lower() == "/roll"):
+        return bot_cmd_roll(Msg)
+    
+    #Commands for registered users only
+    if (Msg.Registered == False) and (Message.count("/") > 0):
+        return "You must be registered to do this. Please use /register"
+
+    if (Message.lower().startswith("/stat ")) or (Message.lower() == "/stat") or (Message.lower().startswith("/stats ")) or (Message.lower() == "/stats"):
+        return  bot_cmd_stat(Msg)
+
+    if (Message.lower().startswith("/about ")) or (Message.lower() == "/about"):
+        return  bot_cmd_about(Msg)
+
+    if (Message.lower().startswith("/perm ")) or (Message.lower() == "/perm") or (Message.lower().startswith("/perms ")) or (Message.lower() == "/perms"):
+        return  bot_cmd_perm(Msg)
+
+    if (Message.lower().startswith("/forget_user ")) or (Message.lower() == "/forget_user"):
+        return bot_cmd_forgetuser(Msg)
+     
+
+    
+    if Message == "hello":
+        return "Hello " + Msg.UserNameFirst
+
+    return None
+
+
+
+def bot_register_user(Msg):
+    target_name = Msg.UserName
+    target_id = get_user_id(target_name)
+    if target_id == None:
+        try:
+            db.BotUsers.insert(username=Msg.UserName,fullname=Msg.UserNameFirst,user_type=0,register_time=datetime.datetime.today())
+            return "Thank you for registering " + Msg.UserNameFirst
+        except Exception, e:
+            return "ERROR: " + str(e)
+    else:
+        return "You are already registered!"
+    return None
+
+def bot_cmd_forgetuser(Msg):
+    #Parse arguments
+    args = Msg.Message.split()
+    target_name = None
+    if len(args) == 1:
+        target_name = Msg.UserName
+    
+    #Fetch user from the database
+    target_id = get_user_id(target_name)
+    if target_id == None:
+        return "User " + target_name + " not found"
+    try:
+        db(db.BotUsers.id == target_id).delete()
+        return "User " + target_name + " is now forgoten"
+    except Exception, e:
+        return "ERROR: " + str(e)
+    
+    return None
+
+
+def bot_cmd_roll(Msg):
+    try:
+        args = Msg.Message.split()
+        min = 1
+        max = 6
+        if len(args) >= 2:
+            max = int(args[1])
+        if len(args) >= 3:
+            min = int(args[1])
+            max = int(args[2])
+        rand_num = random.randint(min, max)
+        return Msg.UserNameFirst + " rolled a " + str(rand_num)
+    except Exception, e:
+        return "ERROR: " + str(e)
+
+def bot_cmd_perm(Msg):
+
+    #Split the arguments
+    args = Msg.Message.split()
+    target_name = None
+    target_stat = None
+    target_value = None
+    if len(args) == 1:
+        target_name = Msg.UserName
+    if len(args) >= 2:
+        target_name = args[1]
+    if len(args) >= 3:
+        target_stat = args[2]
+    if len(args) >= 4:
+        target_value = args[3]
+    
+    #Fetch user from the database
+    target_id = get_user_id(target_name)
+    if target_id == None:
+        return "User " + target_name + " not found"    
+    try:
+        target_name = db.BotUsers[target_id].fullname
+        try:
+            target_stats = json_decode(db.BotUsers[target_id].permissions)['perms']
+        except:
+            target_stats = []
+    except Exception, e:
+        return "ERROR: " + str(e)
+   
+
+    #If no permision was spesified then list all of them
+    if target_stat == None:
+        return target_name + "'s permissions:\n" + listPrint(target_stats)
+    else:
+        #Check if user is premieted to change permissions
+        if hasPerm(Msg,"ChangePermissions") == False:
+            return "You can't do that " + Msg.UserNameFirst
+        if target_value == None:
+            target_value = ""
+        if (target_value.lower() == "take") or (target_value.lower() == "remove") or (target_value.lower() == "revoke"):
+            #We want to remove a permission
+            if target_stats.count(target_stat) == 0:
+                return target_name + " has no permission named " + target_stat
+            target_stats.remove(target_stat)
+        else:
+            #We want to add a permission
+            if target_stats.count(target_stat) > 0:
+                return target_name + " already has permission " + target_stat
+            target_stats.append(target_stat)
+
+        #Write the changes back to the database
+        target_stats.sort()
+        tmp_dict = {"perms":target_stats}
+        db(db.BotUsers.id == target_id).select().first().update_record(permissions=json_encode(tmp_dict))
+        return target_name + "'s permissions changed to:\n" + listPrint(target_stats)
+    return None
+
+def bot_cmd_about(Msg):
+    #Parse arguments
+    args = Msg.Message.split()
+    target_name = None
+    target_stat = None
+    target_value = None
+    if len(args) == 1:
+        target_name = Msg.UserName
+    if len(args) >= 2:
+        target_name = args[1]
+    if len(args) >= 3:
+        target_stat = args[2].replace("_", " ")
+    if len(args) >= 4:
+        target_value = args[3].replace("_", " ")
+    
+    #Fetch user from the database
+    target_id = get_user_id(target_name)
+    if target_id == None:
+        return "User " + target_name + " not found"    
+    try:
+        target_name = db.BotUsers[target_id].fullname
+        target_stats = json_decode(db.BotUsers[target_id].about)
+    except Exception, e:
+        return "ERROR: " + str(e)
+    
+ 
+    #Return the stat, if none is spesified list all of them
+    if target_stat == None:
+        return "About " + target_name + ":\n" + dict_stat_list(target_stats)
+    else:
+        #Find the stat
+        target_statFound = dict_stat_search(target_stats, target_stat)
+        if target_statFound == None:
+            #Create new about entry if one does not exist
+            target_statFound = target_stat
+            target_valueCur = None
+        else:
+             target_valueCur = target_stats[target_statFound]
+
+    #If there is no value spesified then just list the stat, otherwise modify the stat
+    if target_value == None:
+        return target_name + "'s " + statName(target_statFound) + " is " + str(target_valueCur) + statUnit(target_statFound)
+    else:
+        #Check for permision to do so
+        if hasPerm(Msg,"ChangeStats") == False:
+            if (hasPerm(Msg,"ChangeStatsOwn") == False) or (target_id <> Msg.UserDbId):
+                return "You can't do that " + Msg.UserNameFirst
+
+        target_valueNew = target_value
+        #Check if stat is going to be deleted
+        if (target_value.lower() == "delete") or (target_value.lower() == "erase") or (target_value.lower() == "clear") or (target_value.lower() == "remove"):
+            target_value = None
+            target_valueNew = None
+            del target_stats[target_statFound]
+        else:
+            target_stats[target_statFound] = target_valueNew
+        #Update the database
+        db(db.BotUsers.id == target_id).select().first().update_record(about=json_encode(target_stats))
+        #Tell the user what was done
+        if target_valueNew == None:
+            return target_name + "'s " + statName(target_statFound) + " is removed"
+        elif target_valueCur == None:
+            return target_name + "'s " + statName(target_statFound) + " is now " + str(target_valueNew) + " " + statUnit(target_statFound)
+        else:
+            return target_name + "'s " + statName(target_statFound) + " changed from " + str(target_valueCur) + " to " + str(target_valueNew)
+
+    return None
+
+
+def bot_cmd_stat(Msg):
+    #Parse arguments
+    args = Msg.Message.split()
+    target_name = None
+    target_stat = None
+    target_value = None
+    if len(args) == 1:
+        target_name = Msg.UserName
+    if len(args) >= 2:
+        target_name = args[1]
+    if len(args) >= 3:
+        target_stat = args[2].replace("_", " ")
+    if len(args) >= 4:
+        target_value = args[3]
+    
+    #Fetch user from the database
+    target_id = get_user_id(target_name)
+    if target_id == None:
+        return "User " + target_name + " not found"    
+    try:
+        target_name = db.BotUsers[target_id].fullname
+        target_stats = json_decode(db.BotUsers[target_id].stats)
+    except Exception, e:
+        return "ERROR: " + str(e)
+    
+ 
+    #Return the stat, if none is spesified list all of them
+    if target_stat == None:
+        return "Stats for " + target_name + ":\n" + dict_stat_list(target_stats)
+    else:
+        #Find the stat
+        target_statFound = dict_stat_search(target_stats, target_stat)
+        if target_statFound == None:
+            #Check if the stat name has a | in it, then create a new stat with that name otherwise throw an error
+            if "|" in str(target_stat):
+                target_statFound = target_stat
+                target_valueCur = None
+            else:
+                return "Stat " + target_stat + " does not exsist"
+        else:
+             target_valueCur = target_stats[target_statFound]
+
+    #If there is no value spesified then just list the stat
+    if target_value == None:
+        return target_name + "'s " + statName(target_statFound) + " is " + str(target_valueCur) + " " + statUnit(target_statFound)
+    else:
+        #Check for permision to do so
+        if hasPerm(Msg,"ChangeStats") == False:
+            if (hasPerm(Msg,"ChangeStatsOwn") == False) or (target_id <> Msg.UserDbId):
+                return "You can't do that " + Msg.UserNameFirst
+        try:
+            #Check for operators in the value like + - * /
+            target_value = str(target_value)
+            if target_value.startswith("+"):
+                target_valueNew = target_valueCur + float(target_value[1:])
+            elif target_value.startswith("-"):
+                target_valueNew = target_valueCur - float(target_value[1:])
+            elif target_value.startswith("*"):
+                target_valueNew = target_valueCur * float(target_value[1:])
+            elif target_value.startswith("x"):
+                target_valueNew = target_valueCur * float(target_value[1:])
+            elif target_value.startswith("/"):
+                target_valueNew = target_valueCur / float(target_value[1:])
+            elif target_value.startswith(":"):
+                target_valueNew = target_valueCur / float(target_value[1:])
+            elif (target_value.lower() == "delete") or (target_value.lower() == "erase") or (target_value.lower() == "clear") or (target_value.lower() == "remove"):
+                target_valueNew = None
+            else:
+                target_valueNew = float(target_value)
+        except Exception, e:
+            return "Number syntax error" + str(e)
+
+        #Check if stat was deleted
+        if target_valueNew == None:
+            del target_stats[target_statFound]
+        else:
+            target_valueNew = toIntWhenPossible(target_valueNew)
+            target_stats[target_statFound] = target_valueNew
+        #Update the database
+        db(db.BotUsers.id == target_id).select().first().update_record(stats=json_encode(target_stats))
+        #Tell the user what was done
+        if target_valueNew == None:
+            return target_name + "'s " + statName(target_statFound) + " is removed"
+        elif target_valueCur == None:
+            return target_name + "'s " + statName(target_statFound) + " is now " + str(target_valueNew) + " " + statUnit(target_statFound)
+        else:  
+            return target_name + "'s " + statName(target_statFound) + " changed from " + str(target_valueCur) + " " + statUnit(target_statFound) + " to " + str(target_valueNew) + " " + statUnit(target_statFound)
+
+    return None
+
+##################################################################################
+#                           Items
+##################################################################################
+
+
+##################################################################################
+#                           Helper functions
+##################################################################################
+
+def toIntWhenPossible(Num):
+    if int(Num) == Num:
+        return int(Num)
+    else:
+        return Num
+
+def get_user_id(Name):
+    Set = db(db.BotUsers.fullname.lower() == Name.lower())
+    if Set.count() > 0:
+        return Set.select()[0].id
+    Set = db(db.BotUsers.username.lower() == Name.lower())
+    if Set.count() > 0:
+        return Set.select()[0].id
+    return None
+
+def hasPerm(Msg, Permission):
+    try:
+        if Msg.Registered <> True:
+            return False
+        if Msg.Permissions.count("God") > 0:
+            return True
+        if Msg.Permissions.count(Permission) > 0:
+            return True
+        return False
+    except:
+        return False
+
+def dict_stat_search(dictIn, searchItem):
+    term = statName(searchItem)
+    for item in dictIn:
+        if statName(item).lower() == term.lower():
+            return item;
+    return None
+
+def dict_stat_list(src_dict):
+    tmp = ""
+    if src_dict == {}:
+        return "Empty"
+    for item, value in src_dict.items():
+        tmp = tmp + statName(item) + ": " + str(value) + " " + statUnit(item) + "\n"
+    return tmp
+
+def statName(Stat):
+    return Stat.split("|")[0]
+
+def statUnit(Stat):
+    try:
+        return Stat.split("|")[1]
+    except:
+        return ""
+
+def permList(Json):
+    tmp = ""
+    try:
+        List = json_decode(Json)['perms']
+        if len(List) == 0:
+            return "None"
+        for item in List:
+            tmp = tmp + str(item) + " "
+        return tmp
+    except:
+        return "None "
+    
+def listPrint(List):
+    tmp = ""
+    for item in List:
+        tmp = tmp + str(item) + " "
+    return tmp
+
+def test_db():
+    from urllib import quote_plus
+    s = Storage()
+    s.UserName = "Berni"
+    s.Message = "\stat"
+    return str(json_decode('{"perms":["one","two","three"]}'))
+
+def error():
+    return dict()

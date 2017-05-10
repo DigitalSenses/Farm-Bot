@@ -1,0 +1,99 @@
+timestamp: 2016-05-26T17:38:43.841182
+CREATE TABLE auth_user(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name CHAR(128),
+    last_name CHAR(128),
+    email CHAR(512),
+    password CHAR(512),
+    registration_key CHAR(512),
+    reset_password_key CHAR(512),
+    registration_id CHAR(512)
+);
+success!
+timestamp: 2016-05-26T17:38:43.890703
+CREATE TABLE auth_group(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role CHAR(512),
+    description TEXT
+);
+success!
+timestamp: 2016-05-26T17:38:43.934935
+CREATE TABLE auth_membership(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES auth_user (id) ON DELETE CASCADE  ,
+    group_id INTEGER REFERENCES auth_group (id) ON DELETE CASCADE  
+);
+success!
+timestamp: 2016-05-26T17:38:43.989069
+CREATE TABLE auth_permission(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id INTEGER REFERENCES auth_group (id) ON DELETE CASCADE  ,
+    name CHAR(512),
+    table_name CHAR(512),
+    record_id INTEGER
+);
+success!
+timestamp: 2016-05-26T17:38:44.042382
+CREATE TABLE auth_event(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    time_stamp TIMESTAMP,
+    client_ip CHAR(512),
+    user_id INTEGER REFERENCES auth_user (id) ON DELETE CASCADE  ,
+    origin CHAR(512),
+    description TEXT
+);
+success!
+timestamp: 2016-05-26T17:38:44.080675
+CREATE TABLE auth_cas(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER REFERENCES auth_user (id) ON DELETE CASCADE  ,
+    created_on TIMESTAMP,
+    service CHAR(512),
+    ticket CHAR(512),
+    renew CHAR(1)
+);
+success!
+timestamp: 2016-05-26T19:04:37.595544
+CREATE TABLE PostReqs(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    time_stamp TIMESTAMP,
+    post_data TEXT
+);
+success!
+timestamp: 2016-05-29T15:48:11.245945
+CREATE TABLE BotUsers(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username CHAR(512),
+    user_type INTEGER,
+    fullname CHAR(512),
+    register_time TIMESTAMP,
+    about TEXT,
+    stats TEXT
+);
+success!
+timestamp: 2016-06-02T16:05:18.169944
+ALTER TABLE BotUsers ADD inventory TEXT;
+timestamp: 2016-06-02T16:05:18.241944
+ALTER TABLE BotUsers ADD history TEXT;
+success!
+timestamp: 2016-06-05T07:01:28.401608
+ALTER TABLE BotUsers ADD permissions TEXT;
+success!
+timestamp: 2016-06-05T14:53:53.095705
+CREATE TABLE Items(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name CHAR(512),
+    descript CHAR(512),
+    name_e CHAR(512),
+    descript_e CHAR(512),
+    time_left INTEGER,
+    turns_left INTEGER,
+    flags TEXT,
+    code_use TEXT,
+    code_recieve TEXT,
+    code_give TEXT,
+    code_tick TEXT,
+    code_post TEXT,
+    code_stat TEXT
+);
+success!
